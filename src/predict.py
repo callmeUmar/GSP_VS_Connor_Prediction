@@ -1,11 +1,28 @@
 """Predict fight outcomes for two fighters."""
 
-from __future__ import annotations
-
 import pickle
 from pathlib import Path
-
+import joblib
 import pandas as pd
+from pathlib import Path
+
+MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
+
+# Load the three things train_model.py saved
+model = joblib.load(???)
+scaler = joblib.load(???)
+feature_cols = joblib.load(???)
+
+# Load the full fighter history (NOT filtered yet)
+history = pd.read_csv(???, parse_dates=["event_date"])
+
+print("Model loaded:", type(model))
+print("Number of features:", len(feature_cols))
+print("Fighter history shape:", history.shape)
+
+
+from __future__ import annotations
 
 
 def load_model(path: str | Path):
