@@ -36,12 +36,21 @@ raw_cols = ["pre_slpm", "pre_sapm", "pre_str_acc", "pre_str_def",
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 200)
-print(gsp_history[["event_date", "opponent_name"] + raw_cols].to_string(index=False))
-print()
-print(mcgregor_history[["event_date", "opponent_name"] + raw_cols].to_string(index=False))
+gsp_profile = gsp_history[gsp_history["event_date"] == "2013-11-16"][raw_cols].iloc[0]
+mcgregor_profile = mcgregor_history[mcgregor_history["event_date"] == "2016-11-12"][raw_cols].iloc[0]
 
-print("--- GSP full fight list ---")
-print(gsp_history[["event_date", "opponent_name"]].to_string(index=False))
+profile_df = pd.DataFrame({
+    "GSP": gsp_profile,
+    "McGregor": mcgregor_profile,
+})
+print(profile_df)
+
+diff = gsp_profile - mcgregor_profile
+X_matchup = pd.DataFrame([diff.values], columns=feature_cols)
+
+X_scaled = scaler.transform(X_matchup)
+proba = model.predict_proba(X_scaled)[0]
+
 print()
-print("--- McGregor full fight list ---")
-print(mcgregor_history[["event_date", "opponent_name"]].to_string(index=False))
+print(f"GSP win probability:      {proba[1]:.1%}")
+print(f"McGregor win probability: {proba[0]:.1%}")
