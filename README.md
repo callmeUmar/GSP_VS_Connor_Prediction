@@ -9,6 +9,6 @@ This project is organized around a lightweight MMA fight-prediction workflow usi
 - trained artifacts are saved in `models/`
 - output plots are stored in `outputs/plots/`
 
-"Puting in instructions"
+## Instructions
 
-
+See `claude_code_prompt.md` and the project notes for setup and pipeline instructions.
