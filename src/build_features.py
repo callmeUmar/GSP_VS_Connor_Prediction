@@ -26,7 +26,6 @@ RANDOM_SEED = 42
 
 def load_master():
     df = pd.read_csv(RAW_DIR / "master.csv", parse_dates=["event_date"])
-    # Only keep clean wins/losses -- drop draws, no contests, overturned, DQ
     df = df[df["result_status"] == "win"].copy()
     df = df[df["method"].isin(
         ["Decision - Unanimous", "Decision - Split", "Decision - Majority",
@@ -36,10 +35,6 @@ def load_master():
 
 
 def to_long_format(df):
-    """
-    Reshape one row-per-fight into two rows-per-fight (one per corner),
-    each with that fighter's own stats and their opponent's id.
-    """
     r_cols = {c: c[2:] for c in df.columns if c.startswith("r_")}
     b_cols = {c: c[2:] for c in df.columns if c.startswith("b_")}
 
@@ -59,17 +54,13 @@ def to_long_format(df):
     long_df = pd.concat([r_rows, b_rows], ignore_index=True)
     long_df["won"] = (long_df["fighter_id"] == long_df["winner_id"]).astype(int)
 
-    # fight duration in seconds, from finish_round + rounds_fought
-    # each fight has "finish_time" only in master per-corner rows we didn't keep;
-    # approximate total fight seconds from rounds_fought (5 min rounds, minus partial last round)
     long_df["fight_seconds"] = long_df["rounds_fought"] * 5 * 60
-    long_df.loc[long_df["fight_seconds"] <= 0, "fight_seconds"] = 5 * 60  # safety floor
+    long_df.loc[long_df["fight_seconds"] <= 0, "fight_seconds"] = 5 * 60
 
     return long_df
 
 
 def add_per_fight_totals(long_df):
-    """Rename the raw per-fight totals to consistent short names."""
     rename_map = {
         "total_sig_landed": "sig_landed",
         "total_sig_atmp": "sig_atmp",
@@ -87,10 +78,6 @@ def add_per_fight_totals(long_df):
 
 
 def build_fighter_history(long_df):
-    """
-    For every fighter-fight row, compute PRE-FIGHT cumulative career stats
-    using only strictly earlier fights (shift before cumsum).
-    """
     long_df = long_df.sort_values(["fighter_id", "event_date"]).reset_index(drop=True)
 
     stat_cols = ["sig_landed", "sig_atmp", "str_landed", "str_atmp",
@@ -100,17 +87,15 @@ def build_fighter_history(long_df):
     grouped = long_df.groupby("fighter_id")
 
     for col in stat_cols:
-        # shift(1) excludes the current fight -- this is what prevents leakage
         long_df[f"prior_{col}_sum"] = grouped[col].transform(
             lambda s: s.shift(1).cumsum()
         )
 
-    long_df["prior_fight_count"] = grouped.cumcount()  # number of PRIOR fights (0-indexed cumcount = count before this one)
+    long_df["prior_fight_count"] = grouped.cumcount()
 
-    # derived pre-fight rate stats (guard against div-by-zero with NaN -> filled later)
     minutes = long_df["prior_fight_seconds_sum"] / 60.0
     long_df["pre_slpm"] = long_df["prior_sig_landed_sum"] / minutes
-    long_df["pre_sapm"] = np.nan  # filled after we know opponent's landed -- see note below
+    long_df["pre_sapm"] = np.nan
     long_df["pre_str_acc"] = long_df["prior_sig_landed_sum"] / long_df["prior_sig_atmp_sum"]
     long_df["pre_td_avg"] = long_df["prior_td_landed_sum"] / minutes * 15
     long_df["pre_td_acc"] = long_df["prior_td_landed_sum"] / long_df["prior_td_atmp_sum"]
@@ -119,7 +104,6 @@ def build_fighter_history(long_df):
     long_df["pre_ctrl_pct"] = long_df["prior_ctrl_seconds_sum"] / long_df["prior_fight_seconds_sum"]
     long_df["pre_win_pct"] = long_df["prior_won_sum"] / long_df["prior_fight_count"]
 
-    # age at fight
     long_df["dob"] = pd.to_datetime(long_df["dob"], errors="coerce")
     long_df["age_at_fight"] = (long_df["event_date"] - long_df["dob"]).dt.days / 365.25
 
@@ -127,12 +111,6 @@ def build_fighter_history(long_df):
 
 
 def add_defensive_stats(long_df):
-    """
-    Strikes absorbed / takedowns defended require the OPPONENT's numbers in
-    each of the fighter's prior fights. We compute this by joining each row
-    to its opponent's row on fight_id, then re-running the expanding logic
-    on "absorbed" columns.
-    """
     opp = long_df[["fight_id", "fighter_id", "sig_landed", "sig_atmp",
                     "td_landed", "td_atmp"]].rename(columns={
         "fighter_id": "opponent_id",
@@ -166,7 +144,6 @@ FEATURE_COLS = [
 
 
 def height_to_inches(h):
-    # heights come as strings like 5' 11"
     if pd.isna(h):
         return np.nan
     try:
@@ -177,13 +154,6 @@ def height_to_inches(h):
 
 
 def build_matchup_dataset(long_df, master_df):
-    """
-    Rejoin pre-fight features back onto each fight (r_ vs b_), take a
-    RANDOM assignment of which fighter is 'fighter_1' to remove corner bias,
-    and compute diff features (f1 - f2) plus target = f1 won.
-    """
-    long_df["height_inches"] = long_df["height"].apply(height_to_inches)
-
     feat = long_df[["fight_id", "fighter_id"] + FEATURE_COLS].copy()
 
     fights = master_df[["fight_id", "r_fighter_id", "b_fighter_id", "winner_id",
@@ -198,8 +168,6 @@ def build_matchup_dataset(long_df, master_df):
         right_on=["b_fight_id", "b_fighter_id"], how="left"
     ).drop(columns=["b_fight_id"])
 
-    # drop fights where either fighter has no prior history (their debut) --
-    # can't compute rate stats from zero fights
     fights = fights.dropna(subset=[f"r_{c}" for c in FEATURE_COLS] +
                                    [f"b_{c}" for c in FEATURE_COLS], how="any")
 
@@ -218,7 +186,6 @@ def build_matchup_dataset(long_df, master_df):
                        (fights["winner_id"] == fights["r_fighter_id"]).astype(int))
     fights["target_win"] = f1_won
 
-    # method target: collapse into 3 classes
     def method_group(m):
         if m == "KO/TKO":
             return "KO/TKO"
@@ -245,6 +212,7 @@ def main():
     print("Computing pre-fight cumulative stats (no leakage) ...")
     long_df = build_fighter_history(long_df)
     long_df = add_defensive_stats(long_df)
+    long_df["height_inches"] = long_df["height"].apply(height_to_inches)
 
     print("Saving fighter history (for GSP/McGregor profiles later) ...")
     long_df.to_csv(PROCESSED_DIR / "fighter_history.csv", index=False)
