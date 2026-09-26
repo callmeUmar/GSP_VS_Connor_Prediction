@@ -10,12 +10,12 @@ MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
 
 # Load the three things train_model.py saved
-model = joblib.load(???)
-scaler = joblib.load(???)
-feature_cols = joblib.load(???)
+model = joblib.load(MODELS_DIR / "win_model.pkl")
+scaler = joblib.load(MODELS_DIR / "win_scaler.pkl")
+feature_cols = joblib.load(MODELS_DIR / "feature_cols.pkl")
 
 # Load the full fighter history (NOT filtered yet)
-history = pd.read_csv(???, parse_dates=["event_date"])
+history = pd.read_csv(PROCESSED_DIR / "training_data.csv", parse_dates=["event_date"])
 
 print("Model loaded:", type(model))
 print("Number of features:", len(feature_cols))
