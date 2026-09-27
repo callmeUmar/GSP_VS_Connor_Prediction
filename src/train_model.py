@@ -87,6 +87,37 @@ print("\n--- What matters most (logistic regression coefficients) ---")
 print(coef_df.to_string(index=False))
 
 # ---------------------------------------------------------------
+# Step 4.5: cross-validation -- is 62% stable, or a fluke of one split?
+# ---------------------------------------------------------------
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.pipeline import make_pipeline
+
+df_sorted = df.sort_values("event_date").reset_index(drop=True)
+X_sorted = df_sorted[FEATURE_COLS]
+y_sorted = df_sorted[TARGET_COL]
+
+tscv = TimeSeriesSplit(n_splits=5)
+fold_scores = []
+
+for fold, (train_idx, test_idx) in enumerate(tscv.split(X_sorted), start=1):
+    # Rebuild scaler + model inside each fold so test data never leaks into scaling
+    pipe = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))
+    pipe.fit(X_sorted.iloc[train_idx], y_sorted.iloc[train_idx])
+
+    acc = accuracy_score(y_sorted.iloc[test_idx], pipe.predict(X_sorted.iloc[test_idx]))
+    auc = roc_auc_score(y_sorted.iloc[test_idx], pipe.predict_proba(X_sorted.iloc[test_idx])[:, 1])
+    fold_scores.append(acc)
+
+    train_end = df_sorted.iloc[train_idx[-1]]["event_date"].date()
+    test_end = df_sorted.iloc[test_idx[-1]]["event_date"].date()
+    print(f"Fold {fold}: train through {train_end}, test through {test_end} "
+          f"| n_test={len(test_idx):4d} | acc={acc:.3f} | auc={auc:.3f}")
+
+import numpy as np
+
+print(f"\nMean accuracy: {np.mean(fold_scores):.3f} (+/- {np.std(fold_scores):.3f})")
+
+# ---------------------------------------------------------------
 # Step 5: refit on ALL data (train + test) and save
 # Once we've picked a model and validated it honestly on held-out data,
 # it's standard practice to retrain on everything before deploying it --

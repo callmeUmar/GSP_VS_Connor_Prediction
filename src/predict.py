@@ -54,3 +54,11 @@ proba = model.predict_proba(X_scaled)[0]
 print()
 print(f"GSP win probability:      {proba[1]:.1%}")
 print(f"McGregor win probability: {proba[0]:.1%}")
+
+diff_reversed = mcgregor_profile - gsp_profile
+X_reversed = pd.DataFrame([diff_reversed.values], columns=feature_cols)
+proba_reversed = model.predict_proba(scaler.transform(X_reversed))[0]
+
+print()
+print(f"Reversed -- McGregor win probability: {proba_reversed[1]:.1%}")
+print(f"Sum check (should be ~1.0): {proba[1] + proba_reversed[1]:.3f}")

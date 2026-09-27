@@ -109,6 +109,39 @@ def build_fighter_history(long_df):
 
     return long_df
 
+def add_recent_form(long_df, window=3):
+    """
+    Recent-form features: same stats as the career versions, but over
+    only the last `window` fights. Career averages blur "who he was"
+    with "who he is now"; this separates them.
+    """
+    long_df = long_df.sort_values(["fighter_id", "event_date"]).reset_index(drop=True)
+    grouped = long_df.groupby("fighter_id")
+
+    # Sum strikes and minutes separately over the window, THEN divide --
+    # this weights a 15-min war more than a 60-second KO, matching how
+    # UFC Stats computes per-minute rates.
+    for col in ["sig_landed", "opp_sig_landed", "fight_seconds", "won"]:
+        long_df[f"recent_{col}"] = grouped[col].transform(
+            lambda s: s.shift(1).rolling(window, min_periods=1).sum()
+        )
+
+    recent_minutes = long_df["recent_fight_seconds"] / 60.0
+    long_df["recent_slpm_3"] = long_df["recent_sig_landed"] / recent_minutes
+    long_df["recent_sapm_3"] = long_df["recent_opp_sig_landed"] / recent_minutes
+
+    # recent win pct: wins in window / fights actually in window
+    long_df["recent_fights_in_window"] = grouped["won"].transform(
+        lambda s: s.shift(1).rolling(window, min_periods=1).count()
+    )
+    long_df["recent_win_pct_3"] = long_df["recent_won"] / long_df["recent_fights_in_window"]
+
+    # layoff: days since previous fight (ring rust)
+    long_df["days_since_last_fight"] = grouped["event_date"].transform(
+        lambda s: (s - s.shift(1)).dt.days
+    )
+
+    return long_df
 
 def add_defensive_stats(long_df):
     opp = long_df[["fight_id", "fighter_id", "sig_landed", "sig_atmp",
@@ -140,7 +173,9 @@ FEATURE_COLS = [
     "pre_td_avg", "pre_td_acc", "pre_td_def", "pre_sub_avg",
     "pre_kd_avg", "pre_ctrl_pct", "pre_win_pct",
     "age_at_fight", "height_inches", "reach_inches", "prior_fight_count",
+    "recent_slpm_3", "recent_sapm_3", "recent_win_pct_3", "days_since_last_fight",
 ]
+
 
 
 def height_to_inches(h):
@@ -212,6 +247,7 @@ def main():
     print("Computing pre-fight cumulative stats (no leakage) ...")
     long_df = build_fighter_history(long_df)
     long_df = add_defensive_stats(long_df)
+    long_df = add_recent_form(long_df)
     long_df["height_inches"] = long_df["height"].apply(height_to_inches)
 
     print("Saving fighter history (for GSP/McGregor profiles later) ...")
