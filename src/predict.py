@@ -32,7 +32,8 @@ print("McGregor fights:", len(mcgregor_history))
 raw_cols = ["pre_slpm", "pre_sapm", "pre_str_acc", "pre_str_def",
             "pre_td_avg", "pre_td_acc", "pre_td_def", "pre_sub_avg",
             "pre_kd_avg", "pre_ctrl_pct", "pre_win_pct",
-            "age_at_fight", "height_inches", "reach_inches", "prior_fight_count"]
+            "age_at_fight", "height_inches", "reach_inches", "prior_fight_count",
+            "pre_elo"]
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 200)
