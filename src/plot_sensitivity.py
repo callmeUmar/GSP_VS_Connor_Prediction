@@ -10,6 +10,7 @@ Usage:
 Output:
     outputs/plots/sensitivity_heatmap.png
 """
+
 from __future__ import annotations
 
 import joblib
