@@ -143,6 +143,49 @@ def add_recent_form(long_df, window=3):
 
     return long_df
 
+def add_elo(long_df, k=32, base=1500):
+    """
+    Chronological Elo. Each fighter's PRE-fight rating is stored as a feature,
+    then both ratings are updated using the result. Must process fights in
+    date order -- and crucially, store the rating BEFORE updating, or the
+    outcome leaks into the feature.
+    """
+    long_df = long_df.sort_values("event_date").reset_index(drop=True)
+
+    ratings = {}
+    pre_elo = np.zeros(len(long_df))
+
+    # group rows by fight so both corners update together
+    for fight_id, fight_rows in long_df.groupby("fight_id", sort=False):
+        if len(fight_rows) != 2:
+            # incomplete fight (one corner missing) -- record current ratings, skip update
+            for idx, row in fight_rows.iterrows():
+                pre_elo[idx] = ratings.get(row["fighter_id"], base)
+            continue
+
+        idx_a, idx_b = fight_rows.index[0], fight_rows.index[1]
+        id_a = fight_rows.loc[idx_a, "fighter_id"]
+        id_b = fight_rows.loc[idx_b, "fighter_id"]
+
+        r_a = ratings.get(id_a, base)
+        r_b = ratings.get(id_b, base)
+
+        # store PRE-fight ratings first -- this is the feature
+        pre_elo[idx_a] = r_a
+        pre_elo[idx_b] = r_b
+
+        # now update using the result
+        exp_a = 1 / (1 + 10 ** ((r_b - r_a) / 400))
+        exp_b = 1 - exp_a
+        score_a = fight_rows.loc[idx_a, "won"]
+        score_b = fight_rows.loc[idx_b, "won"]
+
+        ratings[id_a] = r_a + k * (score_a - exp_a)
+        ratings[id_b] = r_b + k * (score_b - exp_b)
+
+    long_df["pre_elo"] = pre_elo
+    return long_df
+
 def add_defensive_stats(long_df):
     opp = long_df[["fight_id", "fighter_id", "sig_landed", "sig_atmp",
                     "td_landed", "td_atmp"]].rename(columns={
@@ -173,7 +216,7 @@ FEATURE_COLS = [
     "pre_td_avg", "pre_td_acc", "pre_td_def", "pre_sub_avg",
     "pre_kd_avg", "pre_ctrl_pct", "pre_win_pct",
     "age_at_fight", "height_inches", "reach_inches", "prior_fight_count",
-    "recent_slpm_3", "recent_sapm_3", "recent_win_pct_3", "days_since_last_fight",
+    "pre_elo"
 ]
 
 
@@ -248,6 +291,7 @@ def main():
     long_df = build_fighter_history(long_df)
     long_df = add_defensive_stats(long_df)
     long_df = add_recent_form(long_df)
+    long_df = add_elo(long_df)
     long_df["height_inches"] = long_df["height"].apply(height_to_inches)
 
     print("Saving fighter history (for GSP/McGregor profiles later) ...")
